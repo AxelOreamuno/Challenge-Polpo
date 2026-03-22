@@ -5,7 +5,6 @@ import { AlertCircle, CheckCircle, Clock } from "lucide-react"
 import { formatDistanceToNow } from "date-fns"
 import { es } from "date-fns/locale"
 
-// Definición simple del tipo Ticket basado en nuestro modelo Prisma
 type Ticket = {
   id: string
   title: string
@@ -17,10 +16,13 @@ type Ticket = {
   updatedAt: string
 }
 
+type FilterType = "pendientes" | "resueltos"
+
 export default function Dashboard() {
   const [tickets, setTickets] = useState<Ticket[]>([])
   const [loading, setLoading] = useState(true)
   const [resolvingId, setResolvingId] = useState<string | null>(null)
+  const [filter, setFilter] = useState<FilterType>("pendientes") // ✅ Bonus: estado de filtro
 
   useEffect(() => {
     fetchTickets()
@@ -40,7 +42,7 @@ export default function Dashboard() {
 
   const handleResolve = async (ticket: Ticket) => {
     if (ticket.status === "Resuelto") return
-    
+
     setResolvingId(ticket.id)
     try {
       const res = await fetch(`/api/tickets/${ticket.id}`, {
@@ -51,15 +53,8 @@ export default function Dashboard() {
 
       if (res.ok) {
         const updatedTicket = await res.json()
-        
-        // BUG 2 INTENCIONAL: Mutación de estado de React
-        // Se altera el arreglo original en lugar de crear uno nuevo.
-        // Esto causa que React no detecte el cambio y no vuelva a renderizar la UI inmediatamente.
-        const ticketIndex = tickets.findIndex((t) => t.id === updatedTicket.id)
-        if (ticketIndex !== -1) {
-          tickets[ticketIndex] = updatedTicket
-          setTickets(tickets) // React no verá esto como un cambio de estado válido
-        }
+        // Bug 2: nuevo array inmutable, React detecta el cambio y re-renderiza
+        setTickets(prev => prev.map(t => t.id === updatedTicket.id ? updatedTicket : t))
       }
     } catch (error) {
       console.error("Error resolving ticket:", error)
@@ -67,6 +62,14 @@ export default function Dashboard() {
       setResolvingId(null)
     }
   }
+
+  // Extra: filtrar tickets según la pestaña activa
+  const filteredTickets = tickets.filter(t =>
+    filter === "pendientes" ? t.status !== "Resuelto" : t.status === "Resuelto"
+  )
+
+  const pendientesCount = tickets.filter(t => t.status !== "Resuelto").length
+  const resueltosCount = tickets.filter(t => t.status === "Resuelto").length
 
   if (loading) {
     return (
@@ -77,12 +80,9 @@ export default function Dashboard() {
   }
 
   return (
-    // BUG 1 INTENCIONAL: El Navbar inferior bloquea el contenido
-    // En móviles, falta un padding inferior (ej. pb-20) en este contenedor para que el 
-    // último ticket no quede escondido detrás del fixed footer y su botón sea in-clickeable.
     <div className="min-h-screen bg-gray-50 relative">
-      
-      {/* Header Fijo */}
+
+      {/* Header */}
       <header className="bg-blue-600 text-white shadow-md sticky top-0 z-10">
         <div className="max-w-3xl mx-auto px-4 py-4 flex justify-between items-center">
           <h1 className="text-xl font-bold">TechCorp Soporte</h1>
@@ -90,24 +90,60 @@ export default function Dashboard() {
         </div>
       </header>
 
-      {/* Main Content */}
-      <main className="max-w-3xl mx-auto px-4 py-6">
-        <div className="mb-6 flex justify-between items-end">
-          <div>
-            <h2 className="text-2xl font-bold text-gray-800">Tickets Asignados</h2>
-            <p className="text-gray-500">Gestiona las solicitudes de los clientes.</p>
-          </div>
+      {/* Tabs de filtro visibles en escritorio */}
+      <div className="max-w-3xl mx-auto px-4 pt-6 flex gap-2">
+        <button
+          onClick={() => setFilter("pendientes")}
+          className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-colors ${
+            filter === "pendientes"
+              ? "bg-blue-600 text-white"
+              : "bg-white text-gray-500 border border-gray-200 hover:border-blue-300"
+          }`}
+        >
+          <Clock className="w-4 h-4" />
+          Pendientes
+          <span className={`text-xs px-1.5 py-0.5 rounded-full ${
+            filter === "pendientes" ? "bg-blue-500 text-white" : "bg-gray-100 text-gray-600"
+          }`}>
+            {pendientesCount}
+          </span>
+        </button>
+        <button
+          onClick={() => setFilter("resueltos")}
+          className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-colors ${
+            filter === "resueltos"
+              ? "bg-green-600 text-white"
+              : "bg-white text-gray-500 border border-gray-200 hover:border-green-300"
+          }`}
+        >
+          <CheckCircle className="w-4 h-4" />
+          Resueltos
+          <span className={`text-xs px-1.5 py-0.5 rounded-full ${
+            filter === "resueltos" ? "bg-green-500 text-white" : "bg-gray-100 text-gray-600"
+          }`}>
+            {resueltosCount}
+          </span>
+        </button>
+      </div>
+
+      {/* Bug 1: pb-24 evita que el footer tape los últimos tickets en móvil */}
+      <main className="max-w-3xl mx-auto px-4 py-6 pb-24">
+        <div className="mb-6">
+          <h2 className="text-2xl font-bold text-gray-800">Tickets Asignados</h2>
+          <p className="text-gray-500">Gestiona las solicitudes de los clientes.</p>
         </div>
 
         <div className="space-y-4">
-          {tickets.length === 0 ? (
+          {filteredTickets.length === 0 ? (
             <div className="text-center py-10 bg-white rounded-lg shadow-sm border border-gray-100 text-gray-500">
-              No hay tickets pendientes. ¡Buen trabajo!
+              {filter === "pendientes"
+                ? "No hay tickets pendientes. ¡Buen trabajo!"
+                : "Aún no hay tickets resueltos."}
             </div>
           ) : (
-            tickets.map((ticket) => (
-              <div 
-                key={ticket.id} 
+            filteredTickets.map((ticket) => (
+              <div
+                key={ticket.id}
                 className={`bg-white rounded-lg shadow-sm border p-5 transition-colors ${
                   ticket.status === "Resuelto" ? "border-green-200 bg-green-50/30" : "border-gray-200"
                 }`}
@@ -128,7 +164,7 @@ export default function Dashboard() {
                       {ticket.companyId}
                     </span>
                   </div>
-                  
+
                   {ticket.status === "Resuelto" ? (
                     <span className="flex items-center text-green-600 text-sm font-medium gap-1">
                       <CheckCircle className="w-4 h-4" />
@@ -149,7 +185,7 @@ export default function Dashboard() {
                   <span className="text-xs text-gray-400">
                     Creado hace {formatDistanceToNow(new Date(ticket.createdAt), { locale: es })}
                   </span>
-                  
+
                   {ticket.status !== "Resuelto" && (
                     <button
                       onClick={() => handleResolve(ticket)}
@@ -173,18 +209,27 @@ export default function Dashboard() {
         </div>
       </main>
 
-      {/* Mobile Sticky Footer - Causa el Bug 1 en móviles */}
+      {/* footer ahora filtra al hacer click */}
       <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] p-4 flex justify-around items-center z-50">
-        <div className="flex flex-col items-center text-blue-600">
+        <button
+          onClick={() => setFilter("pendientes")}
+          className={`flex flex-col items-center transition-colors ${
+            filter === "pendientes" ? "text-blue-600" : "text-gray-400 hover:text-gray-600"
+          }`}
+        >
           <Clock className="w-6 h-6 mb-1" />
-          <span className="text-xs font-medium">Pendientes</span>
-        </div>
-        <div className="flex flex-col items-center text-gray-400 hover:text-gray-600 transition-colors">
+          <span className="text-xs font-medium">Pendientes ({pendientesCount})</span>
+        </button>
+        <button
+          onClick={() => setFilter("resueltos")}
+          className={`flex flex-col items-center transition-colors ${
+            filter === "resueltos" ? "text-green-600" : "text-gray-400 hover:text-gray-600"
+          }`}
+        >
           <CheckCircle className="w-6 h-6 mb-1" />
-          <span className="text-xs font-medium">Resueltos</span>
-        </div>
+          <span className="text-xs font-medium">Resueltos ({resueltosCount})</span>
+        </button>
       </div>
-
     </div>
   )
 }
