@@ -1,13 +1,13 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 
-// Función auxiliar simulada para envío de correos
-async function sendEmailNotification(ticketId: string, companyId: string) {
-  // BUG 3 INTENCIONAL: Esta promesa nunca se resuelve
-  // El hilo se queda bloqueado esperando.
+// BUG 3 INTENCIONAL: Resuelto el problema de la promesa que no se resolvía, ahora la función 
+// `sendEmailNotification` devuelve una promesa que se resuelve correctamente, evitando que el proceso se quede esperando indefinidamente.
+
+async function sendEmailNotification(ticketId: string, companyId: string): Promise<void> {
   return new Promise((resolve) => {
-    console.log(`Enviando notificación urgente para el ticket ${ticketId}...`)
-    // Falta: resolve() o hay un error de lógica
+    console.log(`Enviando notificación urgente para el ticket ${ticketId} de la empresa ${companyId}...`)
+    resolve() // ✅ La promesa ahora resuelve correctamente
   })
 }
 
@@ -29,8 +29,11 @@ export async function PATCH(
     }
 
     if (ticket.priority === 'Urgente' && status === 'Resuelto') {
-      // Bug 3: Se queda esperando infinitamente
-      await sendEmailNotification(ticket.id, ticket.companyId)
+      // no bloqueamos la respuesta esperando el email
+      // Si el email falla, lo logueamos pero el ticket igual se actualiza
+      sendEmailNotification(ticket.id, ticket.companyId).catch(err =>
+        console.error('Error enviando notificación de email:', err)
+      )
     }
 
     const updatedTicket = await prisma.ticket.update({
