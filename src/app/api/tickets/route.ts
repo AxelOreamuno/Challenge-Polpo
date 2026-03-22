@@ -2,13 +2,15 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 
 export async function GET() {
+  const CURRENT_COMPANY_ID = 'TechCorp'
   try {
-    // BUG 4 INTENCIONAL: Fuga de datos
-    // El usuario (simulado) pertenece a 'TechCorp', pero aquí traemos todos los tickets
-    // de la base de datos sin filtrar.
+    // BUG 4 INTENCIONAL: Falta de filtro por empresa, ahora se agregará un filtro para que solo se 
+    // devuelvan los tickets de la empresa actual, evitando que los usuarios vean tickets de otras empresas.
     const tickets = await prisma.ticket.findMany({
+      where: {
+        companyId: CURRENT_COMPANY_ID, // Parametro por nombre empresa para evitar fuga de datos
+      },
       orderBy: { createdAt: 'desc' },
-      // Falta: where: { companyId: 'TechCorp' } o usando el usuario de la sesión
     })
 
     return NextResponse.json(tickets)
